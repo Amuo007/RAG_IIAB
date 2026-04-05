@@ -77,6 +77,39 @@ Then open `http://localhost:8000` in your browser.
 
 ---
 
+## Artifact File Sizes
+
+These are the real-world sizes produced from a **334.8 MB Wikipedia ZIM file** (`wikipedia_en_100_2026-01.zim`) embedded on a **MacBook M3 Pro**:
+
+| File | Size | What's inside |
+|---|---|---|
+| `rag_chunks.db` | source DB | Every chunk's text + raw binary embeddings (used during preprocessing only) |
+| `faiss.index` | 30.1 MB | All embeddings re-packed into FAISS's optimized IVF cluster format |
+| `chunks_cache.pkl` | 6.9 MB | Two Python lists: all titles + all chunk texts, index-aligned with FAISS |
+| `fts_index.db` | 10.9 MB | FTS5 inverted index for BM25 keyword search with Porter stemmer |
+
+**Total deployment size on the Pi: ~48 MB** (you do not copy `rag_chunks.db` to the Pi).
+
+---
+
+## Why Three Deployment Files?
+
+Each file does a different job, and combining them would make each job slower.
+
+**`faiss.index` — the vector brain.**
+This is where the embeddings live at query time. `build_index.py` reads all the raw binary embeddings from `rag_chunks.db`, normalizes them, and bakes them into FAISS's IVF cluster format. At search time FAISS only checks a fraction of clusters instead of every vector — that's what makes it fast on a Pi. The original `rag_chunks.db` is too slow for this because SQLite isn't designed for nearest-neighbor math.
+
+**`chunks_cache.pkl` — the text lookup.**
+FAISS only stores numbers (the vectors). When it returns "chunk #4821 is relevant," the server needs to know what that chunk actually says. The pickle is just two Python lists — `titles` and `texts` — in the exact same order as the FAISS index. Doing `titles[4821]` is an O(1) memory lookup. Loading it from SQLite on every query would be much slower.
+
+**`fts_index.db` — the keyword brain.**
+Vector search is great at meaning but can miss exact names, dates, and rare terms. FTS5 handles BM25 keyword matching using SQLite's built-in inverted index with a Porter stemmer (so "died" and "dying" hit the same root). It's a separate database because mixing FTS5 virtual tables into the main `rag_chunks.db` would complicate the schema without any benefit.
+
+**Where are the actual embeddings stored?**
+In two places: `rag_chunks.db` (the raw source, binary-packed floats) and `faiss.index` (a reorganized copy optimized for search). The Pi only needs `faiss.index` — `rag_chunks.db` stays on the build machine.
+
+---
+
 ## How Pipeline 1 Works (Preprocessing)
 
 ```
