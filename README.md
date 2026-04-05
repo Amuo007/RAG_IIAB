@@ -83,7 +83,7 @@ These are the real-world sizes produced from a **334.8 MB Wikipedia ZIM file** (
 
 | File | Size | What's inside |
 |---|---|---|
-| `rag_chunks.db` | source DB | Every chunk's text + raw binary embeddings (used during preprocessing only) |
+| `rag_chunks.db` | 44.1 MB | Every chunk's text + raw binary embeddings (used during preprocessing only) |
 | `faiss.index` | 30.1 MB | All embeddings re-packed into FAISS's optimized IVF cluster format |
 | `chunks_cache.pkl` | 6.9 MB | Two Python lists: all titles + all chunk texts, index-aligned with FAISS |
 | `fts_index.db` | 10.9 MB | FTS5 inverted index for BM25 keyword search with Porter stemmer |
