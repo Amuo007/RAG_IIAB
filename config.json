@@ -1,0 +1,19 @@
+{
+  "ollama_url":             "http://localhost:11434",
+  "embed_model":            "nomic-embed-text",
+  "llm_model":              "qwen2.5:0.5b",
+
+  "zim_file":               "wikipedia_en_100_2026-01.zim",
+  "db_file":                "rag_chunks.db",
+  "faiss_file":             "faiss.index",
+  "cache_file":             "chunks_cache.pkl",
+  "fts_db_file":            "fts_index.db",
+
+  "top_k":                  3,
+  "faiss_k":                60,
+  "bm25_k":                 60,
+  "rrf_k":                  60,
+
+  "chunk_max_chars":        800,
+  "chunk_overlap_paragraphs": 1
+}

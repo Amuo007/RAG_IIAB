@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wikipedia RAG</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; background: #f5f5f5; padding: 24px 20px; color: #222; }
+  .container { max-width: 780px; margin: 0 auto; }
+
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 18px; color: #111; }
+
+  .search-box { display: flex; gap: 8px; margin-bottom: 14px; }
+  input {
+    flex: 1; padding: 10px 14px; border: 1px solid #ccc;
+    border-radius: 8px; font-size: 15px; outline: none; background: white;
+  }
+  input:focus { border-color: #888; }
+  button {
+    padding: 10px 22px; background: #222; color: white;
+    border: none; border-radius: 8px; font-size: 15px; cursor: pointer;
+  }
+  button:hover { background: #444; }
+  button:disabled { background: #999; cursor: not-allowed; }
+
+  .answer-box {
+    background: white; border: 1px solid #e0e0e0; border-radius: 8px;
+    padding: 16px; min-height: 72px; font-size: 15px; line-height: 1.75;
+    white-space: pre-wrap; color: #111;
+  }
+  .answer-placeholder { color: #aaa; }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex; flex-wrap: wrap; gap: 6px 16px;
+    margin-top: 10px; padding: 10px 14px;
+    background: #f0f0f0; border-radius: 6px; font-size: 12px; color: #555;
+  }
+  .stats-bar span b { color: #222; }
+
+  /* Sources */
+  .sources-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; color: #999; margin: 18px 0 8px;
+  }
+  .source {
+    background: white; border: 1px solid #e8e8e8; border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 8px; font-size: 13px;
+  }
+  .source-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+  .source-title { font-weight: 600; color: #111; }
+  .source-score { font-size: 11px; color: #aaa; }
+  .source-text {
+    color: #444; line-height: 1.6; max-height: 240px; overflow-y: auto;
+    white-space: pre-wrap; font-size: 12.5px;
+    border-top: 1px solid #f0f0f0; padding-top: 8px;
+  }
+
+  .spinner { display: none; font-size: 13px; color: #888; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Wikipedia RAG</h1>
+  <div class="search-box">
+    <input id="q" type="text" placeholder="Ask a question..."
+           onkeydown="if(event.key==='Enter') ask()">
+    <button id="btn" onclick="ask()">Ask</button>
+  </div>
+  <div class="spinner" id="spinner">Thinking...</div>
+  <div class="answer-box" id="answer"><span class="answer-placeholder">Answer will appear here...</span></div>
+  <div id="stats"></div>
+  <div id="sources"></div>
+</div>
+
+<script>
+async function ask() {
+  const q = document.getElementById('q').value.trim();
+  if (!q) return;
+
+  const answerEl  = document.getElementById('answer');
+  const statsEl   = document.getElementById('stats');
+  const sourcesEl = document.getElementById('sources');
+  const spinner   = document.getElementById('spinner');
+  const btn       = document.getElementById('btn');
+
+  answerEl.innerHTML = '';
+  statsEl.innerHTML  = '';
+  sourcesEl.innerHTML = '';
+  spinner.style.display = 'block';
+  btn.disabled = true;
+
+  const res = await fetch('/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question: q })
+  });
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  spinner.style.display = 'none';
+
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // Check if stats sentinel has arrived yet
+    const sentinelIdx = buffer.indexOf('[STATS]');
+    if (sentinelIdx !== -1) {
+      // Show only the answer text (trim trailing newlines added before sentinel)
+      answerEl.textContent = buffer.slice(0, sentinelIdx).replace(/\n+$/, '').trim();
+      break;
+    }
+    // Keep streaming to the answer box
+    answerEl.textContent = buffer;
+  }
+
+  // Parse stats + sources from the sentinel payload
+  const sentinelIdx = buffer.indexOf('[STATS]');
+  if (sentinelIdx !== -1) {
+    try {
+      const payload = JSON.parse(buffer.slice(sentinelIdx + '[STATS]'.length));
+      renderStats(payload);
+      renderSources(payload.sources || []);
+    } catch (e) {
+      console.error('Failed to parse stats', e);
+    }
+  }
+
+  btn.disabled = false;
+}
+
+function renderStats(s) {
+  const el = document.getElementById('stats');
+  el.innerHTML = `
+    <div class="stats-bar">
+      <span>Embed <b>${s.embed_ms}ms</b></span>
+      <span>Retrieve <b>${s.retrieve_ms}ms</b></span>
+      <span>Prompt <b>${s.prompt_tokens} tokens</b></span>
+      <span>First token <b>${s.ttft_ms}ms</b></span>
+      <span>Generate <b>${s.gen_ms}ms</b> &middot; <b>${s.gen_tokens} tokens</b></span>
+      <span>Total <b>${s.total_ms}ms</b></span>
+    </div>
+  `;
+}
+
+function renderSources(sources) {
+  if (!sources.length) return;
+  const el = document.getElementById('sources');
+  el.innerHTML = '<div class="sources-label">Sources</div>' +
+    sources.map(s => `
+      <div class="source">
+        <div class="source-header">
+          <span class="source-title">${escHtml(s.title)}</span>
+          <span class="source-score">score ${s.score}</span>
+        </div>
+        <div class="source-text">${escHtml(s.text)}</div>
+      </div>
+    `).join('');
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

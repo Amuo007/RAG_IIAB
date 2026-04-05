@@ -1,0 +1,31 @@
+# ZIM dumps
+*.zim
+
+# SQLite DBs
+rag_chunks*.db
+
+# Generated index files
+faiss.index
+chunks_cache.pkl
+fts_index.db
+
+# Generated text dumps
+extracted_2.txt
+all_clean_text.txt
+article_raw_html.txt
+article_tag_dump.txt
+article_visible_text.txt
+
+# Deployment packages
+pi/
+pi.zip
+
+# Scratch files
+1.py
+2.py
+4.py
+
+# System / Python
+__pycache__/
+*.pyc
+.DS_Store
